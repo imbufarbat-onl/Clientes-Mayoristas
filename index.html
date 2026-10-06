@@ -73,7 +73,8 @@
   .seccion h2{font-family:'Sora',sans-serif;font-size:12px;letter-spacing:.14em;text-transform:uppercase;
               color:var(--verde);margin:22px 2px 4px}
   .fila{display:flex;align-items:center;gap:12px;padding:11px 2px;border-bottom:1px solid var(--linea)}
-  .fila img{width:52px;height:52px;border-radius:12px;object-fit:cover;background:var(--menta);flex:none}
+  .fila img{width:80px;height:80px;border-radius:14px;object-fit:cover;background:var(--menta);flex:none;cursor:zoom-in}
+  @media (min-width:600px){ .fila img{width:104px;height:104px} }
   .f-info{flex:1;min-width:0}
   .f-nombre{font-weight:700;font-size:15px;line-height:1.3}
   .f-sub{font-size:13px;color:var(--gris);margin-top:2px}
@@ -95,6 +96,18 @@
   .promo-tag{display:inline-block;background:#FFF1DC;color:#8A4B00;font-size:11.5px;font-weight:700;
              border-radius:10px;padding:3px 9px;margin-top:5px}
   .bonif{font-size:12.5px;color:#8A4B00;font-weight:700;margin-top:4px}
+  .tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+  .tags .promo-tag{margin-top:0}
+  .tachado{color:var(--gris);font-weight:400;font-size:12.5px}
+  .mis-promos{background:#FFF7EA;border:1px solid #F3DDB8;border-radius:12px;padding:11px 14px;margin:14px 0 4px}
+  .mp-tit{font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:#8A4B00;margin-bottom:4px}
+  .mp-fila{font-size:13.5px;color:var(--tinta);padding:2px 0}
+  .mp-nom{font-weight:700;color:#8A4B00}
+  .mp-alc{color:var(--gris);font-size:12.5px}
+  .aviso-promo{background:#FFF7EA;color:#5E3A00;border-radius:10px;padding:9px 12px;font-size:13px;margin:8px 0 0}
+  .fila-desc{display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:14px;color:#8A4B00;font-weight:700}
+  .chip-desc{background:#FFF1DC;color:#8A4B00;font-size:11.5px;font-weight:700;border-radius:8px;padding:1px 6px}
+  .totales-exito .td{color:#8A4B00;font-weight:700}
   .bonif:empty{display:none}
 
   .estado-carga{padding:26px 0;text-align:center;color:var(--gris);font-size:14px}
@@ -131,7 +144,7 @@
   .panel-cuerpo{overflow-y:auto;padding:14px 20px 26px}
 
   .item{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--linea)}
-  .item img{width:46px;height:46px;border-radius:10px;object-fit:cover;background:var(--menta);flex:none}
+  .item img{width:60px;height:60px;border-radius:12px;object-fit:cover;background:var(--menta);flex:none}
   .item-info{flex:1;min-width:0}
   .item-nombre{font-weight:700;font-size:14px;line-height:1.3}
   .item-detalle{font-size:12.5px;color:var(--gris);margin:2px 0 6px}
@@ -195,6 +208,10 @@
   .link-suave{background:none;border:none;color:var(--gris);font-size:13px;text-decoration:underline;cursor:pointer;margin:8px 0}
 
   /* ============ Toast ============ */
+  .visor{position:fixed;inset:0;z-index:80;background:rgba(22,51,46,.82);display:none;align-items:center;justify-content:center;padding:20px;cursor:zoom-out}
+  .visor.abierto{display:flex}
+  .visor img{max-width:min(560px,100%);max-height:80dvh;border-radius:16px;background:#fff;object-fit:contain}
+  .visor p{position:absolute;bottom:22px;left:0;right:0;text-align:center;color:#fff;font-size:14px;font-weight:700;padding:0 20px}
   .toast{position:fixed;left:50%;bottom:88px;transform:translate(-50%,20px);opacity:0;pointer-events:none;
          background:var(--tinta);color:#fff;font-size:13.5px;padding:10px 18px;border-radius:22px;z-index:70;
          transition:.25s;max-width:calc(100% - 40px);text-align:center}
@@ -305,7 +322,9 @@
     <div id="vistaCarrito">
       <div id="listaItems"></div>
       <div class="res-log" id="resLogistica"></div>
+      <div id="avisosPromo"></div>
       <div class="fila-sub"><span>Subtotal <small>(sin IVA)</small></span><span id="subPanel">$ 0</span></div>
+      <div id="descPanel"></div>
       <div class="fila-sub"><span id="ivaLabel">IVA</span><span id="ivaPanel">$ 0</span></div>
       <div class="fila-total"><span>Total</span><span class="precio" id="totalPanel">$ 0</span></div>
 
@@ -342,6 +361,7 @@
   </div>
 </aside>
 
+<div class="visor" id="visor" role="dialog" aria-label="Foto del producto"><img id="visorImg" alt=""><p id="visorTxt"></p></div>
 <div class="toast" id="toast"></div>
 
 <footer>
@@ -358,8 +378,8 @@
    ===================================================================== */
 const API_URL = "https://script.google.com/macros/s/AKfycbwe5mh22IP4KI8X5yZEeDljiNu6lK1B-hCoqSLwnEJ3U4BXabVXAmSQDWlUrB-WPnR5/exec";
 
-/* IVA: los precios de la planilla son SIN IVA. Alícuota general en %.
-   Si un producto trae su propio campo "iva" (ej. 10.5), se usa ese. */
+/* IVA: los precios de la planilla son SIN IVA. La alícuota la manda la planilla;
+   este valor es solo por si no llega. */
 const IVA_DEFAULT = 21;
 
 /* ===================== Utilidades ===================== */
@@ -378,46 +398,123 @@ function srcImg(p){
 }
 function imgError(img){ img.onerror = null; img.src = PLACEHOLDER_IMG; }
 
-/* ===================== IVA y promos ===================== */
-function alicuota(p){
-  if (p.iva === undefined || p.iva === null || p.iva === '') return IVA_DEFAULT;
-  const v = Number(String(p.iva).replace(',', '.').replace('%', ''));
-  return isFinite(v) && v >= 0 ? v : IVA_DEFAULT;
+/* ===================== Promos ===================== */
+/* Las promos del cliente llegan de la planilla al entrar (solo las que tiene tildadas
+   y activas). El cálculo de abajo es el MISMO que usa el script para cobrar. */
+// =====================================================================
+// CÁLCULO DEL PEDIDO — este bloque es IDÉNTICO en el script y en index.html
+// (el portal lo usa para mostrar; el script lo usa para cobrar y guardar).
+// promos: [{nombre, tipo:'cajas'|'descuento'|'volumen'|'pago', pide, recibe,
+//           pct, minimo, pago, productos:[IDs] (vacío = todos), descripcion}]
+// lineas: [{id, precio, cajas, cajasPallet, litrosCaja, kgCaja}]
+// =====================================================================
+function promoAplica_(pr, id) {
+  return !pr.productos.length || pr.productos.indexOf(String(id).toUpperCase()) !== -1;
 }
 
-/* Promo "pide X, recibe Y" (ej. "10x11": pide 10, recibe 11).
-   La planilla puede mandarla como texto "10x11" o como {pide:10, recibe:11}.
-   Si el producto no trae promo (o el cliente no la tiene activa), no hay promo. */
-function promoDe(p){
-  const v = p.promo;
-  let pide = 0, recibe = 0;
-  if (v && typeof v === 'object'){ pide = Number(v.pide); recibe = Number(v.recibe); }
-  else {
-    const m = String(v || '').match(/(\d+)\s*[x×]\s*(\d+)/i);
-    if (m){ pide = Number(m[1]); recibe = Number(m[2]); }
+// La promo de cajas de regalo de un producto (si hay varias, la que más regala por caja)
+function promoCajasDe_(promos, id) {
+  var mejor = null;
+  promos.forEach(function (pr) {
+    if (pr.tipo !== 'cajas' || !promoAplica_(pr, id)) return;
+    var t = (pr.recibe - pr.pide) / pr.pide;
+    var tm = mejor ? (mejor.recibe - mejor.pide) / mejor.pide : -1;
+    if (t > tm || (t === tm && pr.pide < mejor.pide)) mejor = pr;
+  });
+  return mejor;
+}
+
+// Factor de los % de descuento directos de un producto (para mostrar el precio tachado)
+function factorDescuento_(promos, id) {
+  var f = 1;
+  promos.forEach(function (pr) { if (pr.tipo === 'descuento' && promoAplica_(pr, id)) f *= (1 - pr.pct / 100); });
+  return f;
+}
+
+function r2_(n) { return Math.round(n * 100) / 100; }
+function normPago_(t) { return String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim(); }
+
+// Orden: cajas de regalo → % descuento → % por volumen → % por forma de pago.
+// Los % se aplican en cascada, sobre lo que queda después del anterior, y solo
+// sobre cajas pagas (las de regalo ya están en $0). El IVA va sobre el neto.
+function calcularPedido_(lineas, promos, pago, ivaPct) {
+  var r = { lineas: [], cajas: 0, bonificadas: 0, subtotal: 0, descuentos: [], totalDescuentos: 0,
+            neto: 0, iva: 0, total: 0, pallets: 0, litros: 0, kilos: 0, faltan: [] };
+  lineas.forEach(function (l) {
+    var pc = promoCajasDe_(promos, l.id);
+    var b = pc ? Math.floor(l.cajas / pc.pide) * (pc.recibe - pc.pide) : 0;
+    var fisicas = l.cajas + b;
+    var importe = l.precio * l.cajas;
+    r.lineas.push({ id: l.id, cajas: l.cajas, bonif: b, promoCajas: pc ? pc.nombre : '', importe: importe, valor: importe });
+    r.cajas += l.cajas;
+    r.bonificadas += b;
+    r.subtotal += importe;
+    if (l.cajasPallet > 0) r.pallets += fisicas / l.cajasPallet;
+    r.litros += (l.litrosCaja || 0) * fisicas;
+    r.kilos += (l.kgCaja || 0) * fisicas;
+  });
+
+  function aplicarPct(pr) {
+    var monto = 0;
+    r.lineas.forEach(function (x) {
+      if (!promoAplica_(pr, x.id)) return;
+      var d = x.valor * pr.pct / 100;
+      x.valor -= d;
+      monto += d;
+    });
+    monto = r2_(monto);
+    if (!(monto > 0)) return;
+    // Varias filas de la misma promo (ej. Promo 2 con distinto % por producto) → un solo renglón
+    var ya = null;
+    r.descuentos.forEach(function (d) { if (d.nombre === pr.nombre) ya = d; });
+    if (ya) { ya.monto = r2_(ya.monto + monto); if (ya.pct !== pr.pct) ya.pct = null; }
+    else r.descuentos.push({ nombre: pr.nombre, descripcion: pr.descripcion, pct: pr.pct, monto: monto });
   }
-  return pide > 0 && recibe > pide ? { pide, recibe } : null;
-}
 
-/* Cajas bonificadas para c cajas pedidas (se repite por cada múltiplo). */
-function bonifDe(p, c){
-  const pr = p && p._promo;
-  return pr && c > 0 ? Math.floor(c / pr.pide) * (pr.recibe - pr.pide) : 0;
+  promos.forEach(function (pr) { if (pr.tipo === 'descuento') aplicarPct(pr); });
+  promos.forEach(function (pr) {
+    if (pr.tipo !== 'volumen') return;
+    var cant = 0;
+    r.lineas.forEach(function (x) { if (promoAplica_(pr, x.id)) cant += x.cajas; });
+    if (cant >= pr.minimo) aplicarPct(pr);
+    else r.faltan.push({ nombre: pr.nombre, descripcion: pr.descripcion, pct: pr.pct, falta: pr.minimo - cant });
+  });
+  promos.forEach(function (pr) {
+    if (pr.tipo === 'pago' && pago && normPago_(pr.pago) === normPago_(pago)) aplicarPct(pr);
+  });
+
+  r.descuentos.forEach(function (d) { r.totalDescuentos += d.monto; });
+  r.subtotal = r2_(r.subtotal);
+  r.totalDescuentos = r2_(r.totalDescuentos);
+  r.neto = r2_(r.subtotal - r.totalDescuentos);
+  r.iva = r2_(r.neto * ivaPct / 100);
+  r.total = r2_(r.neto + r.iva);
+  return r;
 }
+// ===================== fin del bloque compartido =====================
 
 function plural(n, s, pl){ return n === 1 ? s : (pl || s + 's'); }
+function pctTxt(n){ return String(n).replace('.', ',') + '%'; }
+function promos(){ return (sesion && sesion.promos) || []; }
 
+/* Texto debajo del producto: cajas de regalo ganadas y cuánto falta para la próxima */
 function textoBonif(p, c){
-  const pr = p && p._promo;
+  const pr = p && promoCajasDe_(promos(), p.id);
   if (!pr || !c) return '';
-  const b = bonifDe(p, c);
+  const b = Math.floor(c / pr.pide) * (pr.recibe - pr.pide);
   const resto = c % pr.pide;
   const falta = pr.pide - resto;
   const regalo = pr.recibe - pr.pide;
   const masRegalo = 'sumá ' + falta + ' más y te llevás ' + regalo + ' ' + plural(regalo, 'caja') + ' de regalo';
   if (!b) return '🎁 ' + masRegalo.charAt(0).toUpperCase() + masRegalo.slice(1);
-  const ya = '🎁 +' + b + ' ' + plural(b, 'caja bonificada', 'cajas bonificadas');
+  const ya = '🎁 +' + b + ' ' + plural(b, 'caja de regalo', 'cajas de regalo');
   return resto ? ya + ' · ' + masRegalo : ya;
+}
+
+/* Lo que pague el cliente según la forma de pago elegida */
+function pagoElegido(){
+  const s = document.querySelector('input[name="pago"]:checked');
+  return s ? s.value : '';
 }
 
 /* Recuerdo del código en este dispositivo (con red de seguridad si el
@@ -461,6 +558,13 @@ function init(){
   $('btnSalir').addEventListener('click', salir);
   document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => irATab(b.dataset.tab)));
   $('catalogo').addEventListener('click', clickCatalogo);
+  $('catalogo').addEventListener('click', e => {
+    const img = e.target.closest('.fila img');
+    if (!img || img.src === PLACEHOLDER_IMG) return;
+    $('visorImg').src = img.src; $('visorTxt').textContent = img.alt;
+    $('visor').classList.add('abierto');
+  });
+  $('visor').addEventListener('click', () => $('visor').classList.remove('abierto'));
   $('listaItems').addEventListener('click', clickItems);
   ['catalogo', 'listaItems'].forEach(z => {
     $(z).addEventListener('input', tipeoCantidad);
@@ -473,8 +577,9 @@ function init(){
   $('barraCarrito').addEventListener('click', abrirPanel);
   $('btnCerrar').addEventListener('click', cerrarPanel);
   $('fondoPanel').addEventListener('click', cerrarPanel);
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarPanel(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape'){ cerrarPanel(); $('visor').classList.remove('abierto'); } });
   $('formPedido').addEventListener('submit', enviarPedido);
+  $('pagoChips').addEventListener('change', () => { renderTotales(); actualizarBarra(); });
   $('formDatos').addEventListener('submit', guardarDatos);
   $('btnListo').addEventListener('click', otroPedido);
 
@@ -499,8 +604,9 @@ async function entrar(silencioso){
   btn.disabled = true; btn.textContent = 'Entrando…';
   try {
     const d = await api({ accion: 'login', codigo });
-    sesion = { codigo, cliente: d.cliente, productos: d.productos || [], pagos: d.pagos || ['A definir'] };
-    sesion.productos.forEach(p => { p._promo = promoDe(p); });
+    sesion = { codigo, cliente: d.cliente, productos: d.productos || [], pagos: d.pagos || ['A definir'],
+               promos: (d.promos || []).map(pr => Object.assign({ productos: [] }, pr)),
+               iva: typeof d.iva === 'number' ? d.iva : IVA_DEFAULT };
     guardarCodigo(codigo);
     pedidosCache = null;
     carrito.clear();
@@ -563,22 +669,50 @@ function renderCatalogo(){
     if (!porCat.has(c)){ porCat.set(c, []); cats.push(c); }
     porCat.get(c).push(p);
   });
-  $('catalogo').innerHTML = cats.map(c =>
+  $('catalogo').innerHTML = cajaPromosHTML() + cats.map(c =>
     '<section class="seccion"><h2>' + esc(c) + '</h2>' +
     porCat.get(c).map(filaHTML).join('') + '</section>').join('');
 }
 
+/* Recuadro "Tus promos" arriba del catálogo (una línea por promo, no por producto) */
+function cajaPromosHTML(){
+  const lista = promos();
+  if (!lista.length) return '';
+  const grupos = new Map();
+  lista.forEach(pr => { if (!grupos.has(pr.nombre)) grupos.set(pr.nombre, pr); });
+  return '<div class="mis-promos"><div class="mp-tit">🎁 Tus promos</div>' +
+    [...grupos.values()].map(pr => '<div class="mp-fila"><span class="mp-nom">' + esc(pr.nombre) + '</span> ' +
+      (pr.tipo === 'cajas' ? 'Cajas de regalo' : pr.tipo === 'descuento' ? 'Descuentos' : esc(pr.descripcion)) +
+      ' <span class="mp-alc">en los productos marcados</span></div>').join('') +
+    '</div>';
+}
+
 function filaHTML(p){
-  const porUnidad = p.unidCaja > 0 ? ' · ' + pesos(p.precio / p.unidCaja) + '/un' : '';
-  const pr = p._promo;
+  const lista = promos();
+  const f = factorDescuento_(lista, p.id);
+  const precioFinal = p.precio * f;
+  const porUnidad = p.unidCaja > 0 ? ' · ' + pesos(precioFinal / p.unidCaja) + '/un' : '';
+  const precioHTML = f < 1
+    ? '<s class="tachado">' + pesos(p.precio) + '</s> <b>' + pesos(precioFinal) + '/caja</b>'
+    : '<b>' + pesos(p.precio) + '/caja</b>';
+  const tags = [];
+  const pc = promoCajasDe_(lista, p.id);
+  if (pc) tags.push('<span class="promo-tag">' + esc(pc.nombre) + ' · pedís ' + pc.pide + ', te llevás ' + pc.recibe + '</span>');
+  lista.forEach(pr => {
+    if (pr.tipo === 'descuento' && promoAplica_(pr, p.id))
+      tags.push('<span class="promo-tag">' + esc(pr.nombre) + ' · ' + pctTxt(pr.pct) + ' OFF</span>');
+    // las de volumen / pago se muestran en el producto solo si son de productos puntuales
+    if ((pr.tipo === 'volumen' || pr.tipo === 'pago') && pr.productos.length && promoAplica_(pr, p.id))
+      tags.push('<span class="promo-tag">' + esc(pr.nombre) + ' · ' + esc(pr.descripcion) + '</span>');
+  });
   const c = carrito.get(p.id) || 0;
   return '<div class="fila" data-id="' + esc(p.id) + '">' +
     '<img src="' + esc(srcImg(p)) + '" alt="' + esc(p.nombre) + '" loading="lazy" onerror="imgError(this)">' +
     '<div class="f-info">' +
       '<div class="f-nombre">' + esc(p.nombre) + (p.detalle ? ' <span style="font-weight:400;color:var(--gris)">· ' + esc(p.detalle) + '</span>' : '') + '</div>' +
-      '<div class="f-sub"><b>' + pesos(p.precio) + '/caja</b> + IVA · ' + p.unidCaja + ' un.' + porUnidad + '</div>' +
+      '<div class="f-sub">' + precioHTML + ' + IVA · ' + p.unidCaja + ' un.' + porUnidad + '</div>' +
       (p.cajasPallet > 0 ? '<div class="f-sub2">1 pallet ≈ ' + Number(p.cajasPallet).toLocaleString('es-AR') + ' cajas</div>' : '') +
-      (pr ? '<div class="promo-tag">PROMO ' + pr.pide + 'x' + pr.recibe + ' · pedís ' + pr.pide + ', te llevás ' + pr.recibe + '</div>' : '') +
+      (tags.length ? '<div class="tags">' + tags.join('') + '</div>' : '') +
       '<div class="bonif">' + esc(textoBonif(p, c)) + '</div>' +
     '</div>' +
     '<div class="f-ctrl">' + controlHTML(p.id) + '</div></div>';
@@ -649,31 +783,19 @@ function finTipeo(e){
 }
 
 function resumen(){
-  let cajas = 0, bonif = 0, subtotal = 0, iva = 0, pallets = 0, litros = 0, kilos = 0;
-  const alics = new Set();
+  const lineas = [];
   carrito.forEach((c, id) => {
     const p = prod(id); if (!p) return;
-    const b = bonifDe(p, c);
-    const fisicas = c + b;                 // las bonificadas también viajan
-    const neto = p.precio * c;             // las bonificadas no se cobran
-    cajas += c; bonif += b;
-    subtotal += neto;
-    iva += neto * alicuota(p) / 100;
-    alics.add(alicuota(p));
-    if (p.cajasPallet > 0) pallets += fisicas / p.cajasPallet;
-    litros += (p.litrosCaja || 0) * fisicas;
-    kilos += (p.kgCaja || 0) * fisicas;
+    lineas.push({ id: p.id, precio: p.precio, cajas: c, cajasPallet: p.cajasPallet, litrosCaja: p.litrosCaja, kgCaja: p.kgCaja });
   });
-  subtotal = Math.round(subtotal * 100) / 100;
-  iva = Math.round(iva * 100) / 100;
-  const total = Math.round((subtotal + iva) * 100) / 100;
-  const ivaLabel = alics.size === 1 ? 'IVA ' + [...alics][0].toLocaleString('es-AR') + '%' : 'IVA';
-  return { cajas, bonif, subtotal, iva, total, ivaLabel, pallets, litros, kilos };
+  const r = calcularPedido_(lineas, promos(), pagoElegido(), sesion ? sesion.iva : IVA_DEFAULT);
+  r.ivaLabel = 'IVA ' + pctTxt(sesion ? sesion.iva : IVA_DEFAULT);
+  return r;
 }
 
 function actualizarBarra(){
   const r = resumen();
-  $('badgeCant').textContent = r.cajas + r.bonif;
+  $('badgeCant').textContent = r.cajas + r.bonificadas;
   $('totalMini').textContent = pesos(r.total);
   $('barraCarrito').classList.toggle('visible', !!sesion && r.cajas > 0 && !$('tabPedido').hidden);
 }
@@ -712,18 +834,34 @@ function renderItems(){
 }
 
 function textoLogistica(r){
-  let cajas = '<b>' + (r.cajas + r.bonif) + ' ' + plural(r.cajas + r.bonif, 'caja') + '</b>';
-  if (r.bonif) cajas += ' (' + r.bonif + ' ' + plural(r.bonif, 'bonificada') + ')';
+  let cajas = '<b>' + (r.cajas + r.bonificadas) + ' ' + plural(r.cajas + r.bonificadas, 'caja') + '</b>';
+  if (r.bonificadas) cajas += ' (' + r.bonificadas + ' de regalo)';
   const partes = ['📦 ' + cajas, '≈ ' + num1(r.pallets) + ' pallets'];
   if (r.litros > 0) partes.push(num1(r.litros) + ' L');
   if (r.kilos > 0) partes.push(num1(r.kilos) + ' kg');
   return partes.join(' · ');
 }
 
+/* Renglones de descuento (Subtotal → descuentos → Neto) */
+function descuentosHTML(r){
+  if (!r.descuentos.length) return '';
+  return r.descuentos.map(d =>
+    '<div class="fila-desc"><span>🎁 ' + esc(d.nombre) + (d.pct != null ? ' · ' + pctTxt(d.pct) + ' off' : ' · descuentos') + '</span><span>−' + pesos(d.monto) + '</span></div>').join('') +
+    '<div class="fila-sub"><span>Neto <small>(sin IVA)</small></span><span>' + pesos(r.neto) + '</span></div>';
+}
+
+/* Avisos de promos por volumen que todavía no se alcanzan */
+function avisosHTML(r){
+  return r.faltan.filter(f => r.cajas > 0).map(f =>
+    '<div class="aviso-promo">🎁 Sumá <b>' + f.falta + ' ' + plural(f.falta, 'caja') + '</b> más y activás <b>' + esc(f.nombre) + '</b>: ' + esc(f.descripcion) + '</div>').join('');
+}
+
 function renderTotales(){
   const r = resumen();
   $('resLogistica').innerHTML = textoLogistica(r);
+  $('avisosPromo').innerHTML = avisosHTML(r);
   $('subPanel').textContent = pesos(r.subtotal);
+  $('descPanel').innerHTML = descuentosHTML(r);
   $('ivaLabel').textContent = r.ivaLabel;
   $('ivaPanel').textContent = pesos(r.iva);
   $('totalPanel').textContent = pesos(r.total);
@@ -741,8 +879,11 @@ function clickItems(e){
 
 /* ===================== Envío ===================== */
 function renderPagos(){
-  $('pagoChips').innerHTML = sesion.pagos.map(op =>
-    '<label class="chip"><input type="radio" name="pago" value="' + esc(op) + '"> ' + esc(op) + '</label>').join('');
+  $('pagoChips').innerHTML = sesion.pagos.map(op => {
+    const pr = promos().find(x => x.tipo === 'pago' && normPago_(x.pago) === normPago_(op));
+    return '<label class="chip"><input type="radio" name="pago" value="' + esc(op) + '"> ' + esc(op) +
+      (pr ? ' <span class="chip-desc">−' + pctTxt(pr.pct) + '</span>' : '') + '</label>';
+  }).join('');
 }
 
 function mostrarError(msj){
@@ -767,18 +908,16 @@ async function enviarPedido(ev){
       pago: pagoSel.value,
       comentarios: $('fComentarios').value.trim(),
       empresa: $('fEmpresa').value, // honeypot
-      // cajas = pedidas (se cobran) · bonificadas = de regalo por promo
-      items: [...carrito.entries()].map(([id, cajas]) => ({ id, cajas, bonificadas: bonifDe(prod(id), cajas) })),
-      // De referencia: la planilla debería recalcular y guardar sus propios valores
-      subtotal: r.subtotal, iva: r.iva, total: r.total
+      // Solo cajas pedidas: regalos, descuentos e IVA los recalcula la planilla
+      items: [...carrito.entries()].map(([id, cajas]) => ({ id, cajas }))
     });
-    // Si la planilla ya devuelve el desglose de IVA, se usa el suyo; si no, el calculado acá.
-    const t = (d.iva !== undefined && d.iva !== null)
-      ? { subtotal: d.subtotal, iva: d.iva, total: d.total }
-      : { subtotal: r.subtotal, iva: r.iva, total: r.total };
+    // Se muestran los importes que confirmó la planilla (si no vinieran, los calculados acá)
+    const t = (d.neto !== undefined && d.neto !== null) ? d : r;
     $('numPedido').textContent = d.numero;
     $('totalExito').innerHTML =
       '<span>Subtotal</span><span>' + pesos(t.subtotal) + '</span>' +
+      (t.descuentos || []).map(x => '<span class="td">🎁 ' + esc(x.nombre) + (x.pct != null ? ' · ' + pctTxt(x.pct) : '') + '</span><span class="td">−' + pesos(x.monto) + '</span>').join('') +
+      ((t.descuentos || []).length ? '<span>Neto</span><span>' + pesos(t.neto) + '</span>' : '') +
       '<span>' + esc(r.ivaLabel) + '</span><span>' + pesos(t.iva) + '</span>' +
       '<span class="tt">Total</span><span class="tt">' + pesos(t.total) + '</span>';
     $('resExito').innerHTML = textoLogistica(r);
