@@ -86,7 +86,16 @@
   .stepper{display:flex;align-items:center;background:var(--menta);border-radius:24px;overflow:hidden}
   .stepper button{width:36px;height:36px;border:none;background:transparent;color:var(--verde);
                   font-size:20px;font-weight:700;cursor:pointer;line-height:1}
-  .stepper .cant{min-width:30px;text-align:center;font-weight:700;font-size:15px}
+  .stepper .cant{width:48px;text-align:center;font-weight:700;font-size:16px;font-family:inherit;color:var(--tinta);
+                 border:none;background:#fff;border-radius:8px;padding:6px 2px;-moz-appearance:textfield}
+  .stepper .cant:focus{outline:2px solid var(--verde);outline-offset:0}
+  .stepper .cant::placeholder{color:#9DB0AA}
+  .stepper button:disabled{opacity:.3;cursor:default}
+  .f-sub2{font-size:12.5px;color:var(--gris);margin-top:2px}
+  .promo-tag{display:inline-block;background:#FFF1DC;color:#8A4B00;font-size:11.5px;font-weight:700;
+             border-radius:10px;padding:3px 9px;margin-top:5px}
+  .bonif{font-size:12.5px;color:#8A4B00;font-weight:700;margin-top:4px}
+  .bonif:empty{display:none}
 
   .estado-carga{padding:26px 0;text-align:center;color:var(--gris);font-size:14px}
   .sk{height:64px;border-radius:12px;margin:10px 0;background:linear-gradient(90deg,#EFF4F2 25%,#E4EDE9 50%,#EFF4F2 75%);
@@ -127,10 +136,17 @@
   .item-nombre{font-weight:700;font-size:14px;line-height:1.3}
   .item-detalle{font-size:12.5px;color:var(--gris);margin:2px 0 6px}
   .item-sub{font-weight:700;font-size:14px;white-space:nowrap}
+  .item-info .stepper{display:inline-flex}
   .quitar{background:none;border:none;color:#B0552F;font-size:12px;cursor:pointer;padding:4px 0;text-decoration:underline}
 
   .res-log{background:var(--menta);border-radius:10px;padding:10px 12px;font-size:13px;color:var(--tinta);margin:12px 0 4px}
-  .fila-total{display:flex;justify-content:space-between;align-items:center;padding:10px 0 4px;font-size:16px;font-weight:700}
+  .fila-sub{display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:14px;color:var(--gris)}
+  .fila-sub:first-of-type{padding-top:10px}
+  .fila-total{display:flex;justify-content:space-between;align-items:center;padding:8px 0 4px;margin-top:4px;
+              border-top:1px solid var(--linea);font-size:16px;font-weight:700}
+  .totales-exito{display:inline-grid;grid-template-columns:auto auto;gap:4px 18px;text-align:left;font-size:14px;color:var(--gris);margin:4px 0}
+  .totales-exito span:nth-child(even){text-align:right}
+  .totales-exito .tt{color:var(--tinta);font-weight:700;font-size:15.5px}
   .fila-total .precio{font-family:'Sora',sans-serif;font-size:20px;color:var(--verde)}
 
   .form h4{font-family:'Sora',sans-serif;font-size:15px;margin:16px 0 8px}
@@ -228,7 +244,7 @@
   <main>
     <!-- ---- Hacer pedido ---- -->
     <section id="tabPedido">
-      <div class="intro"><p>Tocá <b style="color:var(--verde)">+</b> para sumar <b>cajas</b>. Los precios son por caja, según tu lista.</p></div>
+      <div class="intro"><p>Tocá <b style="color:var(--verde)">+</b> o escribí la cantidad de <b>cajas</b>. Los precios son por caja, sin IVA, según tu lista.</p></div>
       <div id="catalogo" aria-live="polite">
         <div class="estado-carga" id="cargando"><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>
       </div>
@@ -289,6 +305,8 @@
     <div id="vistaCarrito">
       <div id="listaItems"></div>
       <div class="res-log" id="resLogistica"></div>
+      <div class="fila-sub"><span>Subtotal <small>(sin IVA)</small></span><span id="subPanel">$ 0</span></div>
+      <div class="fila-sub"><span id="ivaLabel">IVA</span><span id="ivaPanel">$ 0</span></div>
       <div class="fila-total"><span>Total</span><span class="precio" id="totalPanel">$ 0</span></div>
 
       <form class="form" id="formPedido" novalidate>
@@ -316,7 +334,7 @@
       </div>
       <h3>¡Pedido enviado!</h3>
       <div class="num-pedido" id="numPedido"></div>
-      <p id="totalExito"></p>
+      <div><div class="totales-exito" id="totalExito"></div></div>
       <p id="resExito" style="font-weight:700;color:var(--tinta)"></p>
       <p>Te mandamos la confirmación por email y en breve te escribimos por WhatsApp para coordinar pago, flete y entrega.</p>
       <button class="btn-listo-sec" id="btnListo" type="button">Hacer otro pedido</button>
@@ -340,6 +358,10 @@
    ===================================================================== */
 const API_URL = "https://script.google.com/macros/s/AKfycbwe5mh22IP4KI8X5yZEeDljiNu6lK1B-hCoqSLwnEJ3U4BXabVXAmSQDWlUrB-WPnR5/exec";
 
+/* IVA: los precios de la planilla son SIN IVA. Alícuota general en %.
+   Si un producto trae su propio campo "iva" (ej. 10.5), se usa ese. */
+const IVA_DEFAULT = 21;
+
 /* ===================== Utilidades ===================== */
 const $ = id => document.getElementById(id);
 const fmt = new Intl.NumberFormat('es-AR', {style:'currency', currency:'ARS', maximumFractionDigits:0});
@@ -355,6 +377,48 @@ function srcImg(p){
   return /^https?:\/\//i.test(v) ? v : 'https://' + v;
 }
 function imgError(img){ img.onerror = null; img.src = PLACEHOLDER_IMG; }
+
+/* ===================== IVA y promos ===================== */
+function alicuota(p){
+  if (p.iva === undefined || p.iva === null || p.iva === '') return IVA_DEFAULT;
+  const v = Number(String(p.iva).replace(',', '.').replace('%', ''));
+  return isFinite(v) && v >= 0 ? v : IVA_DEFAULT;
+}
+
+/* Promo "pide X, recibe Y" (ej. "10x11": pide 10, recibe 11).
+   La planilla puede mandarla como texto "10x11" o como {pide:10, recibe:11}.
+   Si el producto no trae promo (o el cliente no la tiene activa), no hay promo. */
+function promoDe(p){
+  const v = p.promo;
+  let pide = 0, recibe = 0;
+  if (v && typeof v === 'object'){ pide = Number(v.pide); recibe = Number(v.recibe); }
+  else {
+    const m = String(v || '').match(/(\d+)\s*[x×]\s*(\d+)/i);
+    if (m){ pide = Number(m[1]); recibe = Number(m[2]); }
+  }
+  return pide > 0 && recibe > pide ? { pide, recibe } : null;
+}
+
+/* Cajas bonificadas para c cajas pedidas (se repite por cada múltiplo). */
+function bonifDe(p, c){
+  const pr = p && p._promo;
+  return pr && c > 0 ? Math.floor(c / pr.pide) * (pr.recibe - pr.pide) : 0;
+}
+
+function plural(n, s, pl){ return n === 1 ? s : (pl || s + 's'); }
+
+function textoBonif(p, c){
+  const pr = p && p._promo;
+  if (!pr || !c) return '';
+  const b = bonifDe(p, c);
+  const resto = c % pr.pide;
+  const falta = pr.pide - resto;
+  const regalo = pr.recibe - pr.pide;
+  const masRegalo = 'sumá ' + falta + ' más y te llevás ' + regalo + ' ' + plural(regalo, 'caja') + ' de regalo';
+  if (!b) return '🎁 ' + masRegalo.charAt(0).toUpperCase() + masRegalo.slice(1);
+  const ya = '🎁 +' + b + ' ' + plural(b, 'caja bonificada', 'cajas bonificadas');
+  return resto ? ya + ' · ' + masRegalo : ya;
+}
 
 /* Recuerdo del código en este dispositivo (con red de seguridad si el
    navegador bloquea el almacenamiento: simplemente no persiste). */
@@ -398,6 +462,12 @@ function init(){
   document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => irATab(b.dataset.tab)));
   $('catalogo').addEventListener('click', clickCatalogo);
   $('listaItems').addEventListener('click', clickItems);
+  ['catalogo', 'listaItems'].forEach(z => {
+    $(z).addEventListener('input', tipeoCantidad);
+    $(z).addEventListener('change', finTipeo);
+    $(z).addEventListener('focusin', e => { if (e.target.matches('input.cant')) e.target.select(); });
+    $(z).addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('input.cant')){ e.preventDefault(); e.target.blur(); } });
+  });
   $('listaPedidos').addEventListener('click', clickPedidos);
   $('btnRefrescar').addEventListener('click', () => cargarPedidos(true));
   $('barraCarrito').addEventListener('click', abrirPanel);
@@ -430,6 +500,7 @@ async function entrar(silencioso){
   try {
     const d = await api({ accion: 'login', codigo });
     sesion = { codigo, cliente: d.cliente, productos: d.productos || [], pagos: d.pagos || ['A definir'] };
+    sesion.productos.forEach(p => { p._promo = promoDe(p); });
     guardarCodigo(codigo);
     pedidosCache = null;
     carrito.clear();
@@ -499,58 +570,110 @@ function renderCatalogo(){
 
 function filaHTML(p){
   const porUnidad = p.unidCaja > 0 ? ' · ' + pesos(p.precio / p.unidCaja) + '/un' : '';
+  const pr = p._promo;
+  const c = carrito.get(p.id) || 0;
   return '<div class="fila" data-id="' + esc(p.id) + '">' +
     '<img src="' + esc(srcImg(p)) + '" alt="' + esc(p.nombre) + '" loading="lazy" onerror="imgError(this)">' +
     '<div class="f-info">' +
       '<div class="f-nombre">' + esc(p.nombre) + (p.detalle ? ' <span style="font-weight:400;color:var(--gris)">· ' + esc(p.detalle) + '</span>' : '') + '</div>' +
-      '<div class="f-sub"><b>' + pesos(p.precio) + '/caja</b> · ' + p.unidCaja + ' un.' + porUnidad + '</div>' +
+      '<div class="f-sub"><b>' + pesos(p.precio) + '/caja</b> + IVA · ' + p.unidCaja + ' un.' + porUnidad + '</div>' +
+      (p.cajasPallet > 0 ? '<div class="f-sub2">1 pallet ≈ ' + Number(p.cajasPallet).toLocaleString('es-AR') + ' cajas</div>' : '') +
+      (pr ? '<div class="promo-tag">PROMO ' + pr.pide + 'x' + pr.recibe + ' · pedís ' + pr.pide + ', te llevás ' + pr.recibe + '</div>' : '') +
+      '<div class="bonif">' + esc(textoBonif(p, c)) + '</div>' +
     '</div>' +
     '<div class="f-ctrl">' + controlHTML(p.id) + '</div></div>';
 }
 
+/* Stepper con cantidad escribible (− [ n ] +) */
 function controlHTML(id){
   const c = carrito.get(id) || 0;
-  if (!c) return '<button class="btn-mas" data-accion="mas" aria-label="Agregar una caja">+</button>';
   return '<div class="stepper">' +
-    '<button type="button" data-accion="menos" aria-label="Sacar una caja">−</button>' +
-    '<span class="cant">' + c + '</span>' +
+    '<button type="button" data-accion="menos" aria-label="Sacar una caja"' + (c ? '' : ' disabled') + '>−</button>' +
+    '<input class="cant" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off"' +
+      ' value="' + (c || '') + '" placeholder="0" aria-label="Cantidad de cajas">' +
     '<button type="button" data-accion="mas" aria-label="Agregar una caja">+</button></div>';
 }
 
 function clickCatalogo(e){
   const btn = e.target.closest('button[data-accion]');
   if (!btn) return;
-  cambiar(btn.closest('.fila').dataset.id, btn.dataset.accion === 'mas' ? 1 : -1);
+  const id = btn.closest('.fila').dataset.id;
+  setCant(id, (carrito.get(id) || 0) + (btn.dataset.accion === 'mas' ? 1 : -1));
 }
 
 /* ===================== Carrito (por cajas) ===================== */
 function prod(id){ return sesion.productos.find(x => x.id === id); }
 
-function cambiar(id, delta){
-  const nueva = (carrito.get(id) || 0) + delta;
-  if (nueva <= 0) carrito.delete(id);
-  else carrito.set(id, Math.min(nueva, 9999));
-  const zona = document.querySelector('.fila[data-id="' + CSS.escape(id) + '"] .f-ctrl');
-  if (zona) zona.innerHTML = controlHTML(id);
+/* Fija la cantidad de cajas pedidas de un producto y refresca todo lo que la muestra. */
+function setCant(id, n){
+  n = Math.max(0, Math.min(9999, Math.floor(Number(n)) || 0));
+  if (n) carrito.set(id, n); else carrito.delete(id);
+  sincronizar(id);
   actualizarBarra();
-  if ($('panel').classList.contains('abierto')) renderItems();
+  if ($('panel').classList.contains('abierto')) renderTotales();
+}
+
+/* Actualiza, en catálogo y panel, los lugares que dependen de la cantidad de un producto
+   (sin tocar el campo que el cliente está escribiendo). */
+function sincronizar(id){
+  const p = prod(id); if (!p) return;
+  const c = carrito.get(id) || 0;
+  document.querySelectorAll('[data-id="' + CSS.escape(id) + '"]').forEach(el => {
+    const inp = el.querySelector('input.cant');
+    if (inp && inp !== document.activeElement) inp.value = c || '';
+    const menos = el.querySelector('[data-accion="menos"]');
+    if (menos) menos.disabled = !c;
+    const bo = el.querySelector('.bonif');
+    if (bo) bo.textContent = textoBonif(p, c);
+    const sub = el.querySelector('.item-sub');
+    if (sub) sub.textContent = pesos(p.precio * c);
+  });
+}
+
+function tipeoCantidad(e){
+  const inp = e.target;
+  if (!inp.matches('input.cant')) return;
+  const limpio = inp.value.replace(/\D/g, '').slice(0, 4);
+  if (limpio !== inp.value) inp.value = limpio;
+  setCant(inp.closest('[data-id]').dataset.id, Number(limpio) || 0);
+}
+
+function finTipeo(e){
+  const inp = e.target;
+  if (!inp.matches('input.cant')) return;
+  const id = inp.closest('[data-id]').dataset.id;
+  const c = carrito.get(id) || 0;
+  inp.value = c || '';
+  // Si en el panel dejaron un producto en 0, lo sacamos de la lista
+  if (!c && inp.closest('#listaItems')) renderItems();
 }
 
 function resumen(){
-  let cajas = 0, total = 0, pallets = 0, litros = 0, kilos = 0;
+  let cajas = 0, bonif = 0, subtotal = 0, iva = 0, pallets = 0, litros = 0, kilos = 0;
+  const alics = new Set();
   carrito.forEach((c, id) => {
     const p = prod(id); if (!p) return;
-    cajas += c; total += p.precio * c;
-    if (p.cajasPallet > 0) pallets += c / p.cajasPallet;
-    litros += (p.litrosCaja || 0) * c;
-    kilos += (p.kgCaja || 0) * c;
+    const b = bonifDe(p, c);
+    const fisicas = c + b;                 // las bonificadas también viajan
+    const neto = p.precio * c;             // las bonificadas no se cobran
+    cajas += c; bonif += b;
+    subtotal += neto;
+    iva += neto * alicuota(p) / 100;
+    alics.add(alicuota(p));
+    if (p.cajasPallet > 0) pallets += fisicas / p.cajasPallet;
+    litros += (p.litrosCaja || 0) * fisicas;
+    kilos += (p.kgCaja || 0) * fisicas;
   });
-  return { cajas, total, pallets, litros, kilos };
+  subtotal = Math.round(subtotal * 100) / 100;
+  iva = Math.round(iva * 100) / 100;
+  const total = Math.round((subtotal + iva) * 100) / 100;
+  const ivaLabel = alics.size === 1 ? 'IVA ' + [...alics][0].toLocaleString('es-AR') + '%' : 'IVA';
+  return { cajas, bonif, subtotal, iva, total, ivaLabel, pallets, litros, kilos };
 }
 
 function actualizarBarra(){
   const r = resumen();
-  $('badgeCant').textContent = r.cajas;
+  $('badgeCant').textContent = r.cajas + r.bonif;
   $('totalMini').textContent = pesos(r.total);
   $('barraCarrito').classList.toggle('visible', !!sesion && r.cajas > 0 && !$('tabPedido').hidden);
 }
@@ -576,22 +699,33 @@ function renderItems(){
       '<img src="' + esc(srcImg(p)) + '" alt="" onerror="imgError(this)">' +
       '<div class="item-info">' +
         '<div class="item-nombre">' + esc(p.nombre) + '</div>' +
-        '<div class="item-detalle">' + (p.detalle ? esc(p.detalle) + ' · ' : '') + pesos(p.precio) + '/caja</div>' +
-        '<div class="stepper">' +
-          '<button type="button" data-accion="menos" aria-label="Sacar una caja">−</button>' +
-          '<span class="cant">' + c + '</span>' +
-          '<button type="button" data-accion="mas" aria-label="Agregar una caja">+</button></div>' +
+        '<div class="item-detalle">' + (p.detalle ? esc(p.detalle) + ' · ' : '') + pesos(p.precio) + '/caja + IVA</div>' +
+        controlHTML(id) +
+        '<div class="bonif">' + esc(textoBonif(p, c)) + '</div>' +
       '</div>' +
       '<div style="text-align:right">' +
         '<div class="item-sub">' + pesos(p.precio * c) + '</div>' +
         '<button type="button" class="quitar" data-accion="quitar">Quitar</button>' +
       '</div></div>';
   }).join('');
-  const r = resumen();
-  const partes = ['📦 <b>' + r.cajas + ' caja' + (r.cajas === 1 ? '' : 's') + '</b>', '≈ ' + num1(r.pallets) + ' pallets'];
+  renderTotales();
+}
+
+function textoLogistica(r){
+  let cajas = '<b>' + (r.cajas + r.bonif) + ' ' + plural(r.cajas + r.bonif, 'caja') + '</b>';
+  if (r.bonif) cajas += ' (' + r.bonif + ' ' + plural(r.bonif, 'bonificada') + ')';
+  const partes = ['📦 ' + cajas, '≈ ' + num1(r.pallets) + ' pallets'];
   if (r.litros > 0) partes.push(num1(r.litros) + ' L');
   if (r.kilos > 0) partes.push(num1(r.kilos) + ' kg');
-  $('resLogistica').innerHTML = partes.join(' · ');
+  return partes.join(' · ');
+}
+
+function renderTotales(){
+  const r = resumen();
+  $('resLogistica').innerHTML = textoLogistica(r);
+  $('subPanel').textContent = pesos(r.subtotal);
+  $('ivaLabel').textContent = r.ivaLabel;
+  $('ivaPanel').textContent = pesos(r.iva);
   $('totalPanel').textContent = pesos(r.total);
 }
 
@@ -599,8 +733,10 @@ function clickItems(e){
   const btn = e.target.closest('button[data-accion]');
   if (!btn) return;
   const id = btn.closest('.item').dataset.id;
-  if (btn.dataset.accion === 'quitar') cambiar(id, -999999);
-  else cambiar(id, btn.dataset.accion === 'mas' ? 1 : -1);
+  const actual = carrito.get(id) || 0;
+  if (btn.dataset.accion === 'quitar') setCant(id, 0);
+  else setCant(id, actual + (btn.dataset.accion === 'mas' ? 1 : -1));
+  if (!carrito.has(id)) renderItems();
 }
 
 /* ===================== Envío ===================== */
@@ -623,6 +759,7 @@ async function enviarPedido(ev){
 
   const btn = $('btnEnviar');
   btn.disabled = true; btn.textContent = 'Enviando…';
+  const r = resumen();
   try {
     const d = await api({
       accion: 'pedido',
@@ -630,14 +767,21 @@ async function enviarPedido(ev){
       pago: pagoSel.value,
       comentarios: $('fComentarios').value.trim(),
       empresa: $('fEmpresa').value, // honeypot
-      items: [...carrito.entries()].map(([id, cajas]) => ({ id, cajas }))
+      // cajas = pedidas (se cobran) · bonificadas = de regalo por promo
+      items: [...carrito.entries()].map(([id, cajas]) => ({ id, cajas, bonificadas: bonifDe(prod(id), cajas) })),
+      // De referencia: la planilla debería recalcular y guardar sus propios valores
+      subtotal: r.subtotal, iva: r.iva, total: r.total
     });
+    // Si la planilla ya devuelve el desglose de IVA, se usa el suyo; si no, el calculado acá.
+    const t = (d.iva !== undefined && d.iva !== null)
+      ? { subtotal: d.subtotal, iva: d.iva, total: d.total }
+      : { subtotal: r.subtotal, iva: r.iva, total: r.total };
     $('numPedido').textContent = d.numero;
-    $('totalExito').textContent = 'Total: ' + pesos(d.total);
-    const partes = [d.cajas + ' caja' + (d.cajas === 1 ? '' : 's'), '≈ ' + num1(d.pallets) + ' pallets'];
-    if (d.litros > 0) partes.push(num1(d.litros) + ' L');
-    if (d.kilos > 0) partes.push(num1(d.kilos) + ' kg');
-    $('resExito').textContent = '📦 ' + partes.join(' · ');
+    $('totalExito').innerHTML =
+      '<span>Subtotal</span><span>' + pesos(t.subtotal) + '</span>' +
+      '<span>' + esc(r.ivaLabel) + '</span><span>' + pesos(t.iva) + '</span>' +
+      '<span class="tt">Total</span><span class="tt">' + pesos(t.total) + '</span>';
+    $('resExito').innerHTML = textoLogistica(r);
     $('vistaCarrito').style.display = 'none';
     $('vistaExito').classList.add('visible');
     document.querySelector('.panel-cuerpo').scrollTop = 0;
