@@ -13,6 +13,8 @@
 <meta property="og:image" content="https://dcdn-us.mitiendanube.com/stores/004/716/609/themes/common/logo-1875206110-1751567741-95b97fc8ce651b68308d0848f42ecfcb1751567741-480-0.webp">
 <meta name="twitter:card" content="summary">
 <link rel="icon" href="https://dcdn-us.mitiendanube.com/stores/004/716/609/themes/common/logo-1875206110-1751567741-95b97fc8ce651b68308d0848f42ecfcb1751567741-480-0.webp">
+<link rel="preconnect" href="https://script.google.com" crossorigin>
+<link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
@@ -396,7 +398,27 @@ function srcImg(p){
   if (!v) return PLACEHOLDER_IMG;
   return /^https?:\/\//i.test(v) ? v : 'https://' + v;
 }
-function imgError(img){ img.onerror = null; img.src = PLACEHOLDER_IMG; }
+/* Miniatura liviana para mostrar chica (la foto original se usa al ampliarla).
+   Tiendanube y Google Drive ofrecen versiones reducidas; si la reducida falla,
+   se vuelve a la original, y si esa falla, al dibujito. */
+function miniatura(url){
+  if (url === PLACEHOLDER_IMG) return url;
+  let m = url.match(/^(https?:\/\/[^?#]*mitiendanube\.com\/[^?#]*-)(\d+)-(\d+)(\.(?:webp|jpe?g|png))$/i);
+  if (m) return m[1] + '480-0' + m[4];
+  m = url.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:export=\w+&)?id=)([\w-]{20,})/);
+  if (m) return 'https://lh3.googleusercontent.com/d/' + m[1] + '=w400';
+  return url;
+}
+function imgHTML(p, alt, lazy){
+  const orig = srcImg(p), mini = miniatura(orig);
+  return '<img src="' + esc(mini) + '" data-orig="' + esc(orig) + '" alt="' + esc(alt) + '"' +
+    (lazy ? ' loading="lazy"' : '') + ' decoding="async" width="80" height="80" onerror="imgError(this)">';
+}
+function imgError(img){
+  const orig = img.dataset.orig;
+  if (orig && orig !== PLACEHOLDER_IMG && img.src !== orig){ img.src = orig; return; }
+  img.onerror = null; img.src = PLACEHOLDER_IMG;
+}
 
 /* ===================== Promos ===================== */
 /* Las promos del cliente llegan de la planilla al entrar (solo las que tiene tildadas
@@ -531,8 +553,9 @@ async function api(cuerpo){
   } catch (e){
     throw new Error('No hay conexión con el portal. Revisá tu internet y probá de nuevo.');
   }
-  const d = await r.json();
-  if (!d.ok) throw new Error(d.error || 'Algo salió mal. Probá de nuevo.');
+  let d;
+  try { d = await r.json(); } catch (e){ throw new Error('El portal tardó en responder. Probá de nuevo.'); }
+  if (!d.ok){ const err = new Error(d.error || 'Algo salió mal. Probá de nuevo.'); err.servidor = true; throw err; }
   return d;
 }
 
@@ -550,7 +573,7 @@ const carrito = new Map();     // id → cajas
 let pedidosCache = null;
 
 /* ===================== Inicio ===================== */
-init();
+/* (init() se llama al final del script, cuando ya está todo definido) */
 
 function init(){
   $('btnEntrar').addEventListener('click', entrar);
@@ -561,7 +584,7 @@ function init(){
   $('catalogo').addEventListener('click', e => {
     const img = e.target.closest('.fila img');
     if (!img || img.src === PLACEHOLDER_IMG) return;
-    $('visorImg').src = img.src; $('visorTxt').textContent = img.alt;
+    $('visorImg').src = img.dataset.orig && img.dataset.orig !== PLACEHOLDER_IMG ? img.dataset.orig : img.src; $('visorTxt').textContent = img.alt;
     $('visor').classList.add('abierto');
   });
   $('visor').addEventListener('click', () => $('visor').classList.remove('abierto'));
@@ -583,6 +606,9 @@ function init(){
   $('formDatos').addEventListener('submit', guardarDatos);
   $('btnListo').addEventListener('click', otroPedido);
 
+  // Despierta el script de Google mientras la persona escribe su código
+  if (API_URL) fetch(API_URL).catch(() => {});
+
   const guardado = leerCodigo();
   if (guardado){
     $('fCodigo').value = guardado;
@@ -591,6 +617,52 @@ function init(){
 }
 
 /* ===================== Sesión ===================== */
+/* Última copia de catálogo y precios en este dispositivo: al volver a entrar se
+   muestra al instante y se actualiza en segundo plano. Se borra al cerrar sesión. */
+const COPIA = 'imbu_mayorista_copia';
+function guardarCopia(codigo, d){ try { localStorage.setItem(COPIA, JSON.stringify({ codigo, d, t: Date.now() })); } catch(e){} }
+function leerCopia(codigo){
+  try {
+    const c = JSON.parse(localStorage.getItem(COPIA) || 'null');
+    return c && c.codigo === codigo && Date.now() - c.t < 7 * 864e5 ? c.d : null;
+  } catch(e){ return null; }
+}
+function borrarCopia(){ try { localStorage.removeItem(COPIA); } catch(e){} }
+
+function armarSesion(codigo, d){
+  return { codigo, cliente: d.cliente, productos: d.productos || [], pagos: d.pagos || ['A definir'],
+           promos: (d.promos || []).map(pr => Object.assign({ productos: [] }, pr)),
+           iva: typeof d.iva === 'number' ? d.iva : IVA_DEFAULT };
+}
+
+/* Trae precios y promos frescos sin bloquear la pantalla */
+async function actualizarEnSegundoPlano(codigo, copiaTxt){
+  let d;
+  try { d = await api({ accion: 'login', codigo }); }
+  catch (err){
+    if (err.servidor && sesion && sesion.codigo === codigo){ salir(); mostrarErrorLogin(err.message); }
+    return;   // sin señal: se sigue con la copia
+  }
+  if (!sesion || sesion.codigo !== codigo) return;
+  guardarCopia(codigo, d);
+  if (JSON.stringify(d) === copiaTxt) return;          // nada cambió
+  const aplicar = () => {
+    // si está escribiendo una cantidad, esperar a que termine
+    if (document.activeElement && document.activeElement.matches('input.cant, #formDatos *')){ setTimeout(aplicar, 600); return; }
+    if (!sesion || sesion.codigo !== codigo) return;
+    const pago = pagoElegido();
+    Object.assign(sesion, armarSesion(codigo, d));
+    [...carrito.keys()].forEach(id => { if (!prod(id)) carrito.delete(id); });
+    $('quienNombre').textContent = sesion.cliente.razonSocial || 'Cliente';
+    renderCatalogo(); renderPagos(); cargarFormDatos();
+    const op = [...document.querySelectorAll('input[name="pago"]')].find(x => x.value === pago);
+    if (op) op.checked = true;
+    actualizarBarra();
+    if ($('panel').classList.contains('abierto')) renderItems();
+  };
+  aplicar();
+}
+
 async function entrar(silencioso){
   const codigo = $('fCodigo').value.trim().toUpperCase();
   $('errLogin').classList.remove('visible');
@@ -600,20 +672,30 @@ async function entrar(silencioso){
   }
   if (!API_URL){ mostrarErrorLogin('El portal todavía no está conectado a la planilla.'); return; }
 
+  // Ya entró antes en este dispositivo: se abre al instante con la última copia
+  const copia = silencioso === true ? leerCopia(codigo) : null;
+  if (copia){
+    sesion = armarSesion(codigo, copia);
+    pedidosCache = null; carrito.clear();
+    abrirPortal();
+    actualizarEnSegundoPlano(codigo, JSON.stringify(copia));
+    return;
+  }
+
   const btn = $('btnEntrar');
   btn.disabled = true; btn.textContent = 'Entrando…';
   try {
     const d = await api({ accion: 'login', codigo });
-    sesion = { codigo, cliente: d.cliente, productos: d.productos || [], pagos: d.pagos || ['A definir'],
-               promos: (d.promos || []).map(pr => Object.assign({ productos: [] }, pr)),
-               iva: typeof d.iva === 'number' ? d.iva : IVA_DEFAULT };
+    sesion = armarSesion(codigo, d);
     guardarCodigo(codigo);
+    guardarCopia(codigo, d);
     pedidosCache = null;
     carrito.clear();
     abrirPortal();
   } catch (err){
-    borrarCodigo();
-    if (silencioso !== true) mostrarErrorLogin(err.message);
+    // Solo se olvida el código si la planilla lo rechazó (no por falta de señal)
+    if (err.servidor){ borrarCodigo(); borrarCopia(); }
+    if (silencioso !== true || !err.servidor) mostrarErrorLogin(err.message);
   } finally {
     btn.disabled = false; btn.textContent = 'Entrar';
   }
@@ -636,7 +718,7 @@ function abrirPortal(){
 }
 
 function salir(){
-  borrarCodigo();
+  borrarCodigo(); borrarCopia();
   sesion = null; pedidosCache = null; carrito.clear();
   actualizarBarra(); cerrarPanel();
   $('vApp').hidden = true; $('quien').hidden = true;
@@ -707,7 +789,7 @@ function filaHTML(p){
   });
   const c = carrito.get(p.id) || 0;
   return '<div class="fila" data-id="' + esc(p.id) + '">' +
-    '<img src="' + esc(srcImg(p)) + '" alt="' + esc(p.nombre) + '" loading="lazy" onerror="imgError(this)">' +
+    imgHTML(p, p.nombre, true) +
     '<div class="f-info">' +
       '<div class="f-nombre">' + esc(p.nombre) + (p.detalle ? ' <span style="font-weight:400;color:var(--gris)">· ' + esc(p.detalle) + '</span>' : '') + '</div>' +
       '<div class="f-sub">' + precioHTML + ' + IVA · ' + p.unidCaja + ' un.' + porUnidad + '</div>' +
@@ -818,7 +900,7 @@ function renderItems(){
   $('listaItems').innerHTML = [...carrito.entries()].map(([id, c]) => {
     const p = prod(id); if (!p) return '';
     return '<div class="item" data-id="' + esc(id) + '">' +
-      '<img src="' + esc(srcImg(p)) + '" alt="" onerror="imgError(this)">' +
+      imgHTML(p, '', false) +
       '<div class="item-info">' +
         '<div class="item-nombre">' + esc(p.nombre) + '</div>' +
         '<div class="item-detalle">' + (p.detalle ? esc(p.detalle) + ' · ' : '') + pesos(p.precio) + '/caja + IVA</div>' +
@@ -1043,6 +1125,9 @@ async function guardarDatos(ev){
     btn.disabled = false; btn.textContent = 'Guardar cambios';
   }
 }
+
+/* Arranque: al final, para que todas las funciones y constantes ya existan */
+init();
 </script>
 
 </body>
