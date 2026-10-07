@@ -53,6 +53,14 @@
   .btn-primario:hover{background:var(--verde-osc)}
   .btn-primario:disabled{opacity:.6;cursor:wait}
   .login .ayuda{margin-top:22px;font-size:13px}
+  .aviso-demora{font-size:12.5px;color:var(--gris);margin-top:10px;text-align:center}
+  .espera{font-size:13px;color:var(--tinta);background:var(--menta);border-radius:10px;padding:9px 12px;margin-top:10px;
+          text-align:center;display:none}
+  .espera.visible{display:block}
+  .espera::before{content:'';display:inline-block;width:12px;height:12px;margin-right:8px;vertical-align:-1px;
+          border:2px solid var(--verde);border-right-color:transparent;border-radius:50%;animation:gira .8s linear infinite}
+  @keyframes gira{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion: reduce){ .espera::before{animation:none} }
   .login .ayuda a{color:var(--verde);font-weight:700;text-decoration:none}
 
   .msj-error{display:none;background:#FCE6E4;color:#8A2A22;border-radius:10px;padding:10px 12px;font-size:13.5px;margin:12px 0}
@@ -244,9 +252,10 @@
 <section class="login" id="vLogin">
   <h1>Portal Mayorista</h1>
   <p>Ingresá el código de cliente que te dimos para ver tus precios y armar tu pedido por cajas.</p>
-  <input id="fCodigo" type="text" placeholder="TU-CÓDIGO" autocomplete="off" autocapitalize="characters" maxlength="30">
+  <input id="fCodigo" type="text" placeholder="TU-CÓDIGO" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="30">
   <div class="msj-error" id="errLogin" role="alert"></div>
   <button class="btn-primario" id="btnEntrar" type="button">Entrar</button>
+  <p class="aviso-demora">⏳ El sistema puede tardar unos segundos en responder, sobre todo la primera vez. ¡Gracias por la paciencia!</p>
   <p class="ayuda">¿No tenés código o lo perdiste? <a href="https://wa.me/541123020949?text=Hola!%20Quiero%20acceso%20al%20portal%20mayorista%20de%20IMBU" target="_blank" rel="noopener">Escribinos por WhatsApp</a></p>
 </section>
 
@@ -263,7 +272,7 @@
   <main>
     <!-- ---- Hacer pedido ---- -->
     <section id="tabPedido">
-      <div class="intro"><p>Tocá <b style="color:var(--verde)">+</b> o escribí la cantidad de <b>cajas</b>. Los precios son por caja, sin IVA, según tu lista.</p></div>
+      <div class="intro"><p>Tocá <b style="color:var(--verde)">+</b> o escribí la cantidad de <b>cajas</b>. Los precios son por caja y sin IVA.</p></div>
       <div id="catalogo" aria-live="polite">
         <div class="estado-carga" id="cargando"><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>
       </div>
@@ -282,8 +291,8 @@
       <form class="form" id="formDatos" novalidate>
         <div class="campo"><label for="dRazon">Razón social</label>
           <input id="dRazon" type="text" maxlength="150" required></div>
-        <div class="campo"><label for="dCuit">CUIT</label>
-          <input id="dCuit" type="text" maxlength="20" placeholder="30-12345678-9" inputmode="numeric"></div>
+        <div class="campo"><label for="dCuit">CUIT / CUIL <small>(con o sin guiones)</small></label>
+          <input id="dCuit" type="text" maxlength="20" placeholder="20-12345678-9" inputmode="tel" autocomplete="off"></div>
         <div class="campo"><label for="dCondIva">Condición frente al IVA</label>
           <select id="dCondIva">
             <option value="">Elegir…</option>
@@ -294,7 +303,7 @@
             <option>Otro</option>
           </select></div>
         <div class="campo"><label for="dEmail">Email</label>
-          <input id="dEmail" type="email" maxlength="150" required inputmode="email"></div>
+          <input id="dEmail" type="text" maxlength="150" required inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="email"></div>
         <div class="campo"><label for="dWhatsapp">WhatsApp</label>
           <input id="dWhatsapp" type="tel" maxlength="25" inputmode="tel"></div>
         <div class="campo"><label for="dDireccion">Dirección de entrega</label>
@@ -343,7 +352,7 @@
           <input id="fEmpresa" type="text" tabindex="-1" autocomplete="off">
         </div>
 
-        <div class="nota">📦 Te contactamos por WhatsApp para coordinar pago, flete y entrega.</div>
+        <div class="nota">📦 Te contactamos por WhatsApp para coordinar pago, flete y entrega.<br>⏳ Al enviar, la confirmación puede tardar unos segundos.</div>
         <div class="msj-error" id="msjError" role="alert"></div>
         <button class="btn-primario" id="btnEnviar" type="submit">Enviar pedido</button>
       </form>
@@ -357,7 +366,7 @@
       <div class="num-pedido" id="numPedido"></div>
       <div><div class="totales-exito" id="totalExito"></div></div>
       <p id="resExito" style="font-weight:700;color:var(--tinta)"></p>
-      <p>Te mandamos la confirmación por email y en breve te escribimos por WhatsApp para coordinar pago, flete y entrega.</p>
+      <p>En unos minutos te llega la confirmación por email, y en breve te escribimos por WhatsApp para coordinar pago, flete y entrega.</p>
       <button class="btn-listo-sec" id="btnListo" type="button">Hacer otro pedido</button>
     </div>
   </div>
@@ -559,6 +568,24 @@ async function api(cuerpo){
   return d;
 }
 
+/* Mientras algo tarda: spinner + mensajes que tranquilizan según pasa el tiempo.
+   Devuelve una función para cortarlo. */
+function esperando(btn, textoBoton){
+  btn.disabled = true; btn.textContent = textoBoton;
+  let nota = btn.nextElementSibling;
+  if (!nota || !nota.classList.contains('espera')){
+    nota = document.createElement('p'); nota.className = 'espera'; nota.setAttribute('role', 'status');
+    btn.after(nota);
+  }
+  const pasos = [
+    [2500,  'Un momento, estamos conectando con el sistema…'],
+    [8000,  'Sigue en proceso. Puede tardar unos segundos más, no cierres esta pantalla.'],
+    [20000, 'Está tardando más de lo normal (puede ser la conexión). Esperá un poquito más 🙏']
+  ];
+  const timers = pasos.map(([ms, txt]) => setTimeout(() => { nota.textContent = txt; nota.classList.add('visible'); }, ms));
+  return () => { timers.forEach(clearTimeout); nota.classList.remove('visible'); btn.disabled = false; };
+}
+
 function toast(msj){
   const t = $('toast');
   t.textContent = msj;
@@ -571,6 +598,7 @@ function toast(msj){
 let sesion = null;             // {codigo, cliente, productos, pagos}
 const carrito = new Map();     // id → cajas
 let pedidosCache = null;
+let datosSinGuardar = false;   // el cliente está editando "Mis datos": no pisarle lo escrito
 
 /* ===================== Inicio ===================== */
 /* (init() se llama al final del script, cuando ya está todo definido) */
@@ -604,6 +632,7 @@ function init(){
   $('formPedido').addEventListener('submit', enviarPedido);
   $('pagoChips').addEventListener('change', () => { renderTotales(); actualizarBarra(); });
   $('formDatos').addEventListener('submit', guardarDatos);
+  $('formDatos').addEventListener('input', () => { datosSinGuardar = true; });
   $('btnListo').addEventListener('click', otroPedido);
 
   // Despierta el script de Google mientras la persona escribe su código
@@ -626,6 +655,12 @@ function leerCopia(codigo){
     const c = JSON.parse(localStorage.getItem(COPIA) || 'null');
     return c && c.codigo === codigo && Date.now() - c.t < 7 * 864e5 ? c.d : null;
   } catch(e){ return null; }
+}
+function actualizarCopiaCliente(codigo, cliente){
+  try {
+    const c = JSON.parse(localStorage.getItem(COPIA) || 'null');
+    if (c && c.codigo === codigo){ c.d.cliente = cliente; localStorage.setItem(COPIA, JSON.stringify(c)); }
+  } catch(e){}
 }
 function borrarCopia(){ try { localStorage.removeItem(COPIA); } catch(e){} }
 
@@ -654,7 +689,8 @@ async function actualizarEnSegundoPlano(codigo, copiaTxt){
     Object.assign(sesion, armarSesion(codigo, d));
     [...carrito.keys()].forEach(id => { if (!prod(id)) carrito.delete(id); });
     $('quienNombre').textContent = sesion.cliente.razonSocial || 'Cliente';
-    renderCatalogo(); renderPagos(); cargarFormDatos();
+    renderCatalogo(); renderPagos();
+    if (!datosSinGuardar) cargarFormDatos();
     const op = [...document.querySelectorAll('input[name="pago"]')].find(x => x.value === pago);
     if (op) op.checked = true;
     actualizarBarra();
@@ -683,7 +719,7 @@ async function entrar(silencioso){
   }
 
   const btn = $('btnEntrar');
-  btn.disabled = true; btn.textContent = 'Entrando…';
+  const listo = esperando(btn, 'Entrando…');
   try {
     const d = await api({ accion: 'login', codigo });
     sesion = armarSesion(codigo, d);
@@ -697,7 +733,7 @@ async function entrar(silencioso){
     if (err.servidor){ borrarCodigo(); borrarCopia(); }
     if (silencioso !== true || !err.servidor) mostrarErrorLogin(err.message);
   } finally {
-    btn.disabled = false; btn.textContent = 'Entrar';
+    listo(); btn.textContent = 'Entrar';
   }
 }
 
@@ -719,7 +755,7 @@ function abrirPortal(){
 
 function salir(){
   borrarCodigo(); borrarCopia();
-  sesion = null; pedidosCache = null; carrito.clear();
+  sesion = null; pedidosCache = null; carrito.clear(); datosSinGuardar = false;
   actualizarBarra(); cerrarPanel();
   $('vApp').hidden = true; $('quien').hidden = true;
   $('vLogin').hidden = false;
@@ -741,7 +777,7 @@ function irATab(nombre){
 function renderCatalogo(){
   const productos = sesion.productos;
   if (!productos.length){
-    $('catalogo').innerHTML = '<div class="estado-carga"><p><strong>Todavía no hay productos con precio cargado para tu lista.</strong></p>' +
+    $('catalogo').innerHTML = '<div class="estado-carga"><p><strong>Todavía no hay productos disponibles para tu cuenta.</strong></p>' +
       '<p style="margin-top:6px;font-size:13.5px">Escribinos por WhatsApp y lo resolvemos.</p></div>';
     return;
   }
@@ -981,7 +1017,7 @@ async function enviarPedido(ev){
   if (!pagoSel) return mostrarError('Marcá cómo pensás pagar (es orientativo, lo definimos juntos).');
 
   const btn = $('btnEnviar');
-  btn.disabled = true; btn.textContent = 'Enviando…';
+  const listo = esperando(btn, 'Enviando pedido…');
   const r = resumen();
   try {
     const d = await api({
@@ -1007,10 +1043,16 @@ async function enviarPedido(ev){
     $('vistaExito').classList.add('visible');
     document.querySelector('.panel-cuerpo').scrollTop = 0;
     pedidosCache = null; // para que "Mis pedidos" se refresque
+    // Los emails de confirmación se mandan aparte, sin hacer esperar al cliente.
+    // keepalive: se completa aunque cierre la página.
+    try {
+      fetch(API_URL, { method: 'POST', keepalive: true,
+        body: JSON.stringify({ accion: 'emails', numero: d.numero, codigo: sesion.codigo }) }).catch(() => {});
+    } catch (e) {}
   } catch (err){
     mostrarError(err.message);
   } finally {
-    btn.disabled = false; btn.textContent = 'Enviar pedido';
+    listo(); btn.textContent = 'Enviar pedido';
   }
 }
 
@@ -1094,20 +1136,30 @@ async function guardarDatos(ev){
   ev.preventDefault();
   $('errDatos').classList.remove('visible');
   $('okDatos').classList.remove('visible');
+  const errorDatos = (msj, campo) => {
+    $('errDatos').textContent = msj; $('errDatos').classList.add('visible');
+    if (campo) $(campo).focus();
+  };
   const razonSocial = $('dRazon').value.trim();
   const email = $('dEmail').value.trim();
-  if (razonSocial.length < 2){ $('errDatos').textContent = 'La razón social no puede quedar vacía.'; $('errDatos').classList.add('visible'); return; }
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ $('errDatos').textContent = 'Revisá el email.'; $('errDatos').classList.add('visible'); return; }
+  if (razonSocial.length < 2) return errorDatos('La razón social no puede quedar vacía.', 'dRazon');
+  if (/[^\x21-\x7E]/.test(email)) return errorDatos('El email no puede tener tildes, ñ ni espacios. Revisalo.', 'dEmail');
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return errorDatos('Revisá el email (tiene que ser tipo nombre@empresa.com).', 'dEmail');
+  // CUIT / CUIL: se aceptan con o sin guiones, puntos o espacios; se guarda como 20-12345678-9
+  const cuitNum = $('dCuit').value.replace(/\D/g, '');
+  if (cuitNum && cuitNum.length !== 11) return errorDatos('El CUIT / CUIL tiene que tener 11 números (tiene ' + cuitNum.length + ').', 'dCuit');
+  const cuit = cuitNum ? cuitNum.slice(0, 2) + '-' + cuitNum.slice(2, 10) + '-' + cuitNum.slice(10) : '';
+  $('dCuit').value = cuit;
 
   const btn = $('btnGuardar');
-  btn.disabled = true; btn.textContent = 'Guardando…';
+  const listo = esperando(btn, 'Guardando…');
   try {
     const d = await api({
       accion: 'guardarDatos',
       codigo: sesion.codigo,
       datos: {
         razonSocial, email,
-        cuit: $('dCuit').value.trim(),
+        cuit,
         condIva: $('dCondIva').value,
         whatsapp: $('dWhatsapp').value.trim(),
         direccion: $('dDireccion').value.trim(),
@@ -1115,6 +1167,9 @@ async function guardarDatos(ev){
       }
     });
     sesion.cliente = d.cliente;
+    actualizarCopiaCliente(sesion.codigo, d.cliente);   // así al volver a entrar ya aparecen los datos nuevos
+    datosSinGuardar = false;
+    cargarFormDatos();
     $('quienNombre').textContent = d.cliente.razonSocial;
     $('okDatos').classList.add('visible');
     toast('Datos guardados ✔');
@@ -1122,7 +1177,7 @@ async function guardarDatos(ev){
     $('errDatos').textContent = err.message;
     $('errDatos').classList.add('visible');
   } finally {
-    btn.disabled = false; btn.textContent = 'Guardar cambios';
+    listo(); btn.textContent = 'Guardar cambios';
   }
 }
 
