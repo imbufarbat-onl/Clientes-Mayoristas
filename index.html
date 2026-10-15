@@ -437,7 +437,7 @@ function imgError(img){
 // (el portal lo usa para mostrar; el script lo usa para cobrar y guardar).
 // promos: [{nombre, tipo:'cajas'|'descuento'|'volumen'|'pago', pide, recibe,
 //           desde, pideMayor, recibeMayor (escalón opcional: desde X cajas del producto,
-//           TODAS sus cajas pasan a pideMayor x recibeMayor),
+//           TODAS sus cajas pasan a pideMayor x recibeMayor; pide = 0 → solo rige el escalón),
 //           pct, minimo, pago, productos:[IDs] (vacío = todos), descripcion}]
 // lineas: [{id, precio, cajas, cajasPallet, litrosCaja, kgCaja}]
 // =====================================================================
@@ -445,20 +445,23 @@ function promoAplica_(pr, id) {
   return !pr.productos.length || pr.productos.indexOf(String(id).toUpperCase()) !== -1;
 }
 
+// Cuánto regala por caja una promo (la base; si solo tiene promo mayor, la mayor)
+function tasaCajas_(pr) {
+  var p = pr.pide > 0 ? pr.pide : pr.pideMayor, r = pr.pide > 0 ? pr.recibe : pr.recibeMayor;
+  return p > 0 ? (r - p) / p : 0;
+}
 // La promo de cajas de regalo de un producto (si hay varias, la que más regala por caja)
 function promoCajasDe_(promos, id) {
   var mejor = null;
   promos.forEach(function (pr) {
     if (pr.tipo !== 'cajas' || !promoAplica_(pr, id)) return;
-    var t = (pr.recibe - pr.pide) / pr.pide;
-    var tm = mejor ? (mejor.recibe - mejor.pide) / mejor.pide : -1;
-    if (t > tm || (t === tm && pr.pide < mejor.pide)) mejor = pr;
+    if (!mejor || tasaCajas_(pr) > tasaCajas_(mejor)) mejor = pr;
   });
   return mejor;
 }
 
 // Factor de los % de descuento directos de un producto (para mostrar el precio tachado)
-// Escalón que corresponde a c cajas: {pide, recibe, mayor:true/false}
+// Escalón que corresponde a c cajas: {pide, recibe, mayor:true/false} (pide 0 = sin promo en ese tramo)
 function escalonCajas_(pr, c) {
   if (pr.desde > 0 && pr.pideMayor > 0 && c >= pr.desde) return { pide: pr.pideMayor, recibe: pr.recibeMayor, mayor: true };
   return { pide: pr.pide, recibe: pr.recibe, mayor: false };
@@ -467,7 +470,7 @@ function escalonCajas_(pr, c) {
 function bonifCajas_(pr, c) {
   if (!pr || !(c > 0)) return 0;
   var e = escalonCajas_(pr, c);
-  return Math.floor(c / e.pide) * (e.recibe - e.pide);
+  return e.pide > 0 ? Math.floor(c / e.pide) * (e.recibe - e.pide) : 0;
 }
 
 function factorDescuento_(promos, id) {
@@ -546,29 +549,33 @@ function promos(){ return (sesion && sesion.promos) || []; }
 function textoBonif(p, c){
   const pr = p && promoCajasDe_(promos(), p.id);
   if (!pr || !c) return '';
+  const hayEscalon = pr.desde > 0 && pr.pideMayor > 0;
   const e = escalonCajas_(pr, c);
   const b = bonifCajas_(pr, c);
-  const resto = c % e.pide;
-  const falta = e.pide - resto;
-  const regalo = e.recibe - e.pide;
-  const masRegalo = 'sumá ' + falta + ' más y te llevás ' + regalo + ' ' + plural(regalo, 'caja') + ' de regalo';
-  // Si sumando esas cajas ya llega al escalón, el aviso de abajo es el que vale
-  const llegaAlEscalon = pr.desde > 0 && pr.pideMayor > 0 && !e.mayor && c + falta >= pr.desde;
   let txt = '';
-  if (!b) txt = llegaAlEscalon ? '' : '🎁 ' + masRegalo.charAt(0).toUpperCase() + masRegalo.slice(1);
-  else {
-    txt = '🎁 +' + b + ' ' + plural(b, 'caja de regalo', 'cajas de regalo') +
-          (e.mayor ? ' (' + e.pide + 'x' + e.recibe + ' por llevar ' + pr.desde + ' o más)' : '');
-    if (resto && !llegaAlEscalon) txt += ' · ' + masRegalo;
+  if (e.pide > 0){
+    const resto = c % e.pide;
+    const falta = e.pide - resto;
+    const regalo = e.recibe - e.pide;
+    const masRegalo = 'sumá ' + falta + ' más y te llevás ' + regalo + ' ' + plural(regalo, 'caja') + ' de regalo';
+    // Si sumando esas cajas ya llega al escalón, el aviso de abajo es el que vale
+    const llegaAlEscalon = hayEscalon && !e.mayor && c + falta >= pr.desde;
+    if (!b) txt = llegaAlEscalon ? '' : '🎁 ' + masRegalo.charAt(0).toUpperCase() + masRegalo.slice(1);
+    else {
+      txt = '🎁 +' + b + ' ' + plural(b, 'caja de regalo', 'cajas de regalo') +
+            (e.mayor ? ' (' + e.pide + 'x' + e.recibe + ' por llevar ' + pr.desde + ' o más)' : '');
+      if (resto && !llegaAlEscalon) txt += ' · ' + masRegalo;
+    }
   }
   // Escalón todavía no alcanzado: avisar cuánto falta y cuánto ganaría
-  if (pr.desde > 0 && pr.pideMayor > 0 && !e.mayor){
-    const faltan = pr.desde - c;
-    txt += (txt ? '\n' : '') + '⬆️ Llevando ' + pr.desde + ' cajas (te faltan ' + faltan + ') pasás a ' + pr.pideMayor + 'x' + pr.recibeMayor +
+  if (hayEscalon && !e.mayor){
+    txt += (txt ? '\n' : '') + '⬆️ Llevando ' + pr.desde + ' cajas (te faltan ' + (pr.desde - c) + ') ' +
+           (pr.pide > 0 ? 'pasás a ' : 'tenés ') + pr.pideMayor + 'x' + pr.recibeMayor +
            ': ' + bonifCajas_(pr, pr.desde) + ' de regalo';
   }
   return txt;
 }
+
 
 
 /* Lo que pague el cliente según la forma de pago elegida */
@@ -844,8 +851,12 @@ function filaHTML(p){
     : '<b>' + pesos(p.precio) + '/caja</b>';
   const tags = [];
   const pc = promoCajasDe_(lista, p.id);
-  if (pc) tags.push('<span class="promo-tag">' + esc(pc.nombre) + ' · pedís ' + pc.pide + ', te llevás ' + pc.recibe +
-    (pc.desde > 0 && pc.pideMayor > 0 ? ' · desde ' + pc.desde + ' cajas: ' + pc.pideMayor + 'x' + pc.recibeMayor : '') + '</span>');
+  if (pc){
+    const partes = [];
+    if (pc.pide > 0) partes.push('pedís ' + pc.pide + ', te llevás ' + pc.recibe);
+    if (pc.desde > 0 && pc.pideMayor > 0) partes.push('desde ' + pc.desde + ' cajas: ' + pc.pideMayor + 'x' + pc.recibeMayor);
+    tags.push('<span class="promo-tag">' + esc(pc.nombre) + ' · ' + partes.join(' · ') + '</span>');
+  }
   lista.forEach(pr => {
     if (pr.tipo === 'descuento' && promoAplica_(pr, p.id))
       tags.push('<span class="promo-tag">' + esc(pr.nombre) + ' · ' + pctTxt(pr.pct) + ' OFF</span>');
