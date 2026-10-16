@@ -53,6 +53,8 @@
   .btn-primario:hover{background:var(--verde-osc)}
   .btn-primario:disabled{opacity:.6;cursor:wait}
   .login .ayuda{margin-top:22px;font-size:13px}
+  .aviso-copia{background:#FFF1DC;color:#5E3A00;border-radius:10px;padding:10px 12px;font-size:13px;margin:14px 0 0;line-height:1.4}
+  .aviso-copia button{background:none;border:none;color:#8A4B00;font-weight:700;text-decoration:underline;cursor:pointer;font-size:13px;padding:0 0 0 4px}
   .aviso-demora{font-size:12.5px;color:var(--gris);margin-top:10px;text-align:center}
   .espera{font-size:13px;color:var(--tinta);background:var(--menta);border-radius:10px;padding:9px 12px;margin-top:10px;
           text-align:center;display:none}
@@ -270,6 +272,10 @@
   </nav>
 
   <main>
+    <div class="aviso-copia" id="avisoCopia" hidden>
+      ⚠️ No pudimos conectar con el sistema: estás viendo los precios y promos de tu último ingreso.
+      <button type="button" id="btnReintentar">Reintentar</button>
+    </div>
     <!-- ---- Hacer pedido ---- -->
     <section id="tabPedido">
       <div class="intro"><p>Tocá <b style="color:var(--verde)">+</b> o escribí la cantidad de <b>cajas</b>. Los precios son por caja y sin IVA.</p></div>
@@ -395,7 +401,7 @@ const IVA_DEFAULT = 21;
 
 /* ===================== Utilidades ===================== */
 const $ = id => document.getElementById(id);
-const fmt = new Intl.NumberFormat('es-AR', {style:'currency', currency:'ARS', maximumFractionDigits:0});
+const fmt = new Intl.NumberFormat('es-AR', {style:'currency', currency:'ARS', minimumFractionDigits:2, maximumFractionDigits:2});
 const pesos = n => fmt.format(n);
 const num1 = n => (Math.round(n*10)/10).toLocaleString('es-AR');
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -668,6 +674,11 @@ function init(){
   $('formPedido').addEventListener('submit', enviarPedido);
   $('pagoChips').addEventListener('change', () => { renderTotales(); actualizarBarra(); });
   $('formDatos').addEventListener('submit', guardarDatos);
+  $('btnReintentar').addEventListener('click', () => {
+    if (!sesion) return;
+    $('avisoCopia').hidden = true;
+    actualizarEnSegundoPlano(sesion.codigo, JSON.stringify(leerCopia(sesion.codigo)));
+  });
   $('formDatos').addEventListener('input', () => { datosSinGuardar = true; });
   $('btnListo').addEventListener('click', otroPedido);
 
@@ -712,9 +723,12 @@ async function actualizarEnSegundoPlano(codigo, copiaTxt){
   try { d = await api({ accion: 'login', codigo }); }
   catch (err){
     if (err.servidor && sesion && sesion.codigo === codigo){ salir(); mostrarErrorLogin(err.message); }
-    return;   // sin señal: se sigue con la copia
+    // sin conexión con el sistema: se sigue con la copia, pero avisando
+    else if (sesion && sesion.codigo === codigo) $('avisoCopia').hidden = false;
+    return;
   }
   if (!sesion || sesion.codigo !== codigo) return;
+  $('avisoCopia').hidden = true;
   guardarCopia(codigo, d);
   if (JSON.stringify(d) === copiaTxt) return;          // nada cambió
   const aplicar = () => {
